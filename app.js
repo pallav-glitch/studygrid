@@ -1,9 +1,9 @@
 /* ════════════════════════════════════════════════
-   StudyGrid – app.js
-   All app logic: state, rendering, events, storage
+   StudyGrid – app.js  [UPDATED]
+   Grid: Rows = Weeks, Cols = Days (Mon–Sun)
+   Week numbers are ISO year-accurate (W1–W52)
    ════════════════════════════════════════════════ */
 
-// ── MOTIVATIONAL QUOTES (one shown per calendar day) ──────────────────────────
 const QUOTES = [
   "Small progress is still progress.",
   "Every hour you study today is a problem you won't face tomorrow.",
@@ -28,41 +28,26 @@ const QUOTES = [
 ];
 
 // ── STATE ─────────────────────────────────────────────────────────────────────
-// viewDate: the month currently being displayed
 let viewDate = new Date();
-viewDate.setDate(1); // normalise to 1st of month
-
-// studyData: object keyed by 'YYYY-MM-DD' → { hours, note }
+viewDate.setDate(1);
 let studyData = loadData();
-
-// Track the day cell being edited
 let editingDateKey = null;
 
-// ── DATA PERSISTENCE ──────────────────────────────────────────────────────────
-/** Load all study data from localStorage */
+// ── STORAGE ───────────────────────────────────────────────────────────────────
 function loadData() {
-  try {
-    return JSON.parse(localStorage.getItem('studygrid_data') || '{}');
-  } catch {
-    return {};
-  }
+  try { return JSON.parse(localStorage.getItem('studygrid_data') || '{}'); }
+  catch { return {}; }
 }
-
-/** Save all study data to localStorage */
 function saveData() {
   localStorage.setItem('studygrid_data', JSON.stringify(studyData));
 }
 
 // ── HELPERS ───────────────────────────────────────────────────────────────────
-/** Format a Date to 'YYYY-MM-DD' */
 function toKey(d) {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 }
-
-/** Get today's key */
 function todayKey() { return toKey(new Date()); }
 
-/** Map study hours to a colour level (0–4) */
 function hoursToLevel(h) {
   if (!h || h <= 0) return 0;
   if (h <= 2) return 1;
@@ -71,120 +56,119 @@ function hoursToLevel(h) {
   return 4;
 }
 
-/** Get the ISO day-of-week (1=Mon … 7=Sun) for a date */
+// Mon=1 ... Sun=7
 function isoDayOfWeek(d) {
-  return ((d.getDay() + 6) % 7) + 1; // convert Sun=0 → Mon=1
+  return ((d.getDay() + 6) % 7) + 1;
 }
 
-/** Return the daily quote based on today's date (consistent for the day) */
+// ISO week number W1–W52 (year-accurate)
+function getISOWeekNumber(d) {
+  const date = new Date(d);
+  date.setHours(0, 0, 0, 0);
+  date.setDate(date.getDate() + 3 - ((date.getDay() + 6) % 7));
+  const week1 = new Date(date.getFullYear(), 0, 4);
+  return 1 + Math.round(((date - week1) / 86400000 - 3 + ((week1.getDay() + 6) % 7)) / 7);
+}
+
 function getDailyQuote() {
   const day = new Date();
   const idx = (day.getFullYear() * 1000 + day.getMonth() * 31 + day.getDate()) % QUOTES.length;
   return QUOTES[idx];
 }
 
-// ── STREAK CALCULATION ────────────────────────────────────────────────────────
-/**
- * Calculate current streak (consecutive days up to today with >0 hours)
- * and best-ever streak.
- */
+// ── STREAKS ───────────────────────────────────────────────────────────────────
 function calcStreaks() {
-  const today = new Date();
-  today.setHours(0,0,0,0);
-
-  let current = 0;
-  let best = 0;
-  let running = 0;
-
-  // Walk backwards from today to find current streak
+  const today = new Date(); today.setHours(0,0,0,0);
+  let current = 0, best = 0, running = 0;
   const cursor = new Date(today);
   while (true) {
     const k = toKey(cursor);
-    const h = studyData[k]?.hours || 0;
-    if (h > 0) {
-      current++;
-      cursor.setDate(cursor.getDate() - 1);
-    } else {
-      break;
-    }
+    if ((studyData[k]?.hours || 0) > 0) { current++; cursor.setDate(cursor.getDate() - 1); }
+    else break;
   }
-
-  // Walk all keys sorted to find best streak
-  const allKeys = Object.keys(studyData)
-    .filter(k => studyData[k]?.hours > 0)
-    .sort();
-
+  const allKeys = Object.keys(studyData).filter(k => studyData[k]?.hours > 0).sort();
   if (allKeys.length > 0) {
-    running = 1;
-    best = 1;
+    running = 1; best = 1;
     for (let i = 1; i < allKeys.length; i++) {
-      const prev = new Date(allKeys[i-1]);
-      const curr = new Date(allKeys[i]);
-      const diff = (curr - prev) / 86400000;
-      if (diff === 1) {
-        running++;
-        best = Math.max(best, running);
-      } else {
-        running = 1;
-      }
+      const diff = (new Date(allKeys[i]) - new Date(allKeys[i-1])) / 86400000;
+      if (diff === 1) { running++; best = Math.max(best, running); }
+      else running = 1;
     }
   }
-
   return { current, best };
 }
 
 // ── RENDER GRID ───────────────────────────────────────────────────────────────
+// Each ROW = one week | Left label = W{ISO week number}
+// Days outside the current month are faded
 function renderGrid() {
   const year  = viewDate.getFullYear();
   const month = viewDate.getMonth();
-
-  const grid = document.getElementById('grid');
+  const grid  = document.getElementById('grid');
   grid.innerHTML = '';
 
-  const firstDay  = new Date(year, month, 1);
-  const lastDay   = new Date(year, month + 1, 0);
-  const todayStr  = todayKey();
+  const firstDay = new Date(year, month, 1);
+  const lastDay  = new Date(year, month + 1, 0);
+  const todayStr = todayKey();
+  const now      = new Date();
 
-  // How many blank padding cells before the 1st
-  const leadingBlanks = isoDayOfWeek(firstDay) - 1;
+  // Monday that starts the first visible week
+  const startDow = isoDayOfWeek(firstDay);
+  const gridStart = new Date(firstDay);
+  gridStart.setDate(gridStart.getDate() - (startDow - 1));
 
-  // Add leading blank cells (previous month overflow)
-  for (let i = 0; i < leadingBlanks; i++) {
-    const blank = document.createElement('div');
-    blank.className = 'day-cell empty';
-    grid.appendChild(blank);
-  }
+  // Sunday that ends the last visible week
+  const endDow = isoDayOfWeek(lastDay);
+  const gridEnd = new Date(lastDay);
+  gridEnd.setDate(gridEnd.getDate() + (7 - endDow));
 
-  // Render each day of the month
-  for (let d = 1; d <= lastDay.getDate(); d++) {
-    const date    = new Date(year, month, d);
-    const key     = toKey(date);
-    const entry   = studyData[key];
-    const hours   = entry?.hours || 0;
-    const level   = hoursToLevel(hours);
-    const isToday = key === todayStr;
-    const isFuture = date > new Date();
+  const cursor = new Date(gridStart);
 
-    const cell = document.createElement('div');
-    cell.className = 'day-cell';
-    cell.dataset.level = level;
-    cell.dataset.key   = key;
+  while (cursor <= gridEnd) {
+    const weekRow = document.createElement('div');
+    weekRow.className = 'week-row-grid';
 
-    if (isToday)  cell.classList.add('today');
-    if (isFuture) cell.classList.add('future');
+    // Week number label on left
+    const weekNum = getISOWeekNumber(cursor);
+    const label = document.createElement('div');
+    label.className = 'week-num-label';
+    label.textContent = `W${weekNum}`;
+    weekRow.appendChild(label);
 
-    // Small day number
-    const num = document.createElement('span');
-    num.className = 'day-num';
-    num.textContent = d;
-    cell.appendChild(num);
+    // 7 cells Mon–Sun
+    for (let i = 0; i < 7; i++) {
+      const date    = new Date(cursor);
+      const key     = toKey(date);
+      const inMonth = date.getMonth() === month;
+      const hours   = studyData[key]?.hours || 0;
+      const level   = hoursToLevel(hours);
+      const isToday = key === todayStr;
+      const isFuture = date > now;
 
-    // Open modal on tap/click
-    if (!isFuture) {
-      cell.addEventListener('click', () => openModal(key, date));
+      const cell = document.createElement('div');
+      cell.className = 'day-cell';
+      cell.dataset.level = inMonth ? level : 0;
+      cell.dataset.key = key;
+
+      if (!inMonth)          cell.classList.add('out-of-month');
+      if (isToday)           cell.classList.add('today');
+      if (isFuture||!inMonth) cell.classList.add('future');
+
+      // Day number
+      const num = document.createElement('span');
+      num.className = 'day-num';
+      num.textContent = date.getDate();
+      cell.appendChild(num);
+
+      if (inMonth && !isFuture) {
+        cell.addEventListener('click', () => openModal(key, date));
+      }
+
+      weekRow.appendChild(cell);
+      cursor.setDate(cursor.getDate() + 1);
     }
 
-    grid.appendChild(cell);
+    grid.appendChild(weekRow);
   }
 }
 
@@ -197,218 +181,133 @@ function renderWeekly() {
 
   const firstDay = new Date(year, month, 1);
   const lastDay  = new Date(year, month + 1, 0);
-
-  // Determine the max possible weekly hours to size progress bars
   const MAX_HOURS = 50;
 
-  let weekNum   = 1;
-  let weekHours = 0;
-  let weekStart = 1;
+  const startDow = isoDayOfWeek(firstDay);
+  const cursor   = new Date(firstDay);
+  cursor.setDate(cursor.getDate() - (startDow - 1));
 
-  const flush = (weekEnd) => {
-    const row = document.createElement('div');
-    row.className = 'week-row';
+  const endDow = isoDayOfWeek(lastDay);
+  const gridEnd = new Date(lastDay);
+  gridEnd.setDate(gridEnd.getDate() + (7 - endDow));
 
+  while (cursor <= gridEnd) {
+    const weekNum = getISOWeekNumber(cursor);
+    let weekHours = 0;
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(cursor);
+      d.setDate(d.getDate() + i);
+      if (d.getMonth() === month) weekHours += studyData[toKey(d)]?.hours || 0;
+    }
     const pct = Math.min((weekHours / MAX_HOURS) * 100, 100);
-
+    const row = document.createElement('div');
+    row.className = 'week-summary-row';
     row.innerHTML = `
       <div class="week-label">W${weekNum}</div>
-      <div class="week-bar-wrap">
-        <div class="week-bar-fill" style="width:${pct}%"></div>
-      </div>
+      <div class="week-bar-wrap"><div class="week-bar-fill" style="width:${pct}%"></div></div>
       <div class="week-hours">${weekHours}h</div>
     `;
     list.appendChild(row);
-    weekNum++;
-    weekHours = 0;
-  };
-
-  for (let d = 1; d <= lastDay.getDate(); d++) {
-    const date  = new Date(year, month, d);
-    const key   = toKey(date);
-    weekHours  += studyData[key]?.hours || 0;
-
-    // End of week = Sunday (isoDayOfWeek === 7) or last day of month
-    if (isoDayOfWeek(date) === 7 || d === lastDay.getDate()) {
-      flush(d);
-      weekStart = d + 1;
-    }
+    cursor.setDate(cursor.getDate() + 7);
   }
 }
 
-// ── RENDER HEADER STATS ───────────────────────────────────────────────────────
+// ── RENDER HEADER ─────────────────────────────────────────────────────────────
 function renderHeader() {
   const year  = viewDate.getFullYear();
   const month = viewDate.getMonth();
-
-  // Month name
   document.getElementById('month-name').textContent =
     new Date(year, month, 1).toLocaleString('default', { month: 'long', year: 'numeric' });
-
-  // Total hours this month
   const lastDay = new Date(year, month + 1, 0).getDate();
   let total = 0;
-  for (let d = 1; d <= lastDay; d++) {
-    const key = toKey(new Date(year, month, d));
-    total += studyData[key]?.hours || 0;
-  }
+  for (let d = 1; d <= lastDay; d++) total += studyData[toKey(new Date(year, month, d))]?.hours || 0;
   document.getElementById('month-hours').textContent = total;
-
-  // Quote
   document.getElementById('daily-quote').textContent = getDailyQuote();
-
-  // Streaks
   const { current, best } = calcStreaks();
   document.getElementById('streak-count').textContent = current;
   document.getElementById('best-streak').textContent  = best;
 }
 
-// ── FULL RE-RENDER ────────────────────────────────────────────────────────────
-function render() {
-  renderHeader();
-  renderGrid();
-  renderWeekly();
-}
+function render() { renderHeader(); renderGrid(); renderWeekly(); }
 
 // ── MODAL ─────────────────────────────────────────────────────────────────────
-let modalHours = 0; // local state for the hours picker
+let modalHours = 0;
 
 function openModal(key, date) {
   editingDateKey = key;
-  const entry    = studyData[key] || {};
-  modalHours     = entry.hours || 0;
-
-  // Format date nicely
+  const entry = studyData[key] || {};
+  modalHours = entry.hours || 0;
   document.getElementById('modal-date').textContent =
     date.toLocaleDateString('default', { weekday: 'long', day: 'numeric', month: 'long' });
-
   document.getElementById('hour-display').textContent = modalHours;
   document.getElementById('modal-note').value = entry.note || '';
-
   document.getElementById('modal-overlay').classList.remove('hidden');
 }
-
 function closeModal() {
   document.getElementById('modal-overlay').classList.add('hidden');
   editingDateKey = null;
 }
-
 function saveModal() {
   if (!editingDateKey) return;
-
   const note = document.getElementById('modal-note').value.trim();
-
-  if (modalHours === 0 && !note) {
-    // Remove entry if nothing logged
-    delete studyData[editingDateKey];
-  } else {
-    studyData[editingDateKey] = { hours: modalHours, note };
-  }
-
-  saveData();
-  closeModal();
-
-  // Animate the updated cell
+  if (modalHours === 0 && !note) delete studyData[editingDateKey];
+  else studyData[editingDateKey] = { hours: modalHours, note };
+  saveData(); closeModal();
   const cell = document.querySelector(`.day-cell[data-key="${editingDateKey}"]`);
   if (cell) {
     cell.dataset.level = hoursToLevel(modalHours);
-    cell.classList.remove('animate');
-    // Force reflow to restart animation
-    void cell.offsetWidth;
-    cell.classList.add('animate');
+    cell.classList.remove('animate'); void cell.offsetWidth; cell.classList.add('animate');
     setTimeout(() => cell.classList.remove('animate'), 500);
   }
-
   render();
 }
 
-// ── EVENT LISTENERS ───────────────────────────────────────────────────────────
-// Month navigation
-document.getElementById('prev-month').addEventListener('click', () => {
-  viewDate.setMonth(viewDate.getMonth() - 1);
-  render();
-});
-document.getElementById('next-month').addEventListener('click', () => {
-  viewDate.setMonth(viewDate.getMonth() + 1);
-  render();
-});
-
-// Modal controls
+// ── EVENTS ────────────────────────────────────────────────────────────────────
+document.getElementById('prev-month').addEventListener('click', () => { viewDate.setMonth(viewDate.getMonth()-1); render(); });
+document.getElementById('next-month').addEventListener('click', () => { viewDate.setMonth(viewDate.getMonth()+1); render(); });
 document.getElementById('modal-close').addEventListener('click', closeModal);
-document.getElementById('modal-overlay').addEventListener('click', (e) => {
-  if (e.target === document.getElementById('modal-overlay')) closeModal();
-});
+document.getElementById('modal-overlay').addEventListener('click', e => { if (e.target===document.getElementById('modal-overlay')) closeModal(); });
 document.getElementById('modal-save').addEventListener('click', saveModal);
+document.getElementById('hour-inc').addEventListener('click', () => { if (modalHours<24) modalHours++; document.getElementById('hour-display').textContent=modalHours; });
+document.getElementById('hour-dec').addEventListener('click', () => { if (modalHours>0) modalHours--; document.getElementById('hour-display').textContent=modalHours; });
+document.addEventListener('keydown', e => { if (e.key==='Escape') closeModal(); });
 
-document.getElementById('hour-inc').addEventListener('click', () => {
-  if (modalHours < 24) modalHours++;
-  document.getElementById('hour-display').textContent = modalHours;
-});
-document.getElementById('hour-dec').addEventListener('click', () => {
-  if (modalHours > 0) modalHours--;
-  document.getElementById('hour-display').textContent = modalHours;
-});
-
-// Export data as JSON
 document.getElementById('export-btn').addEventListener('click', () => {
-  const json  = JSON.stringify(studyData, null, 2);
-  const blob  = new Blob([json], { type: 'application/json' });
-  const url   = URL.createObjectURL(blob);
-  const a     = document.createElement('a');
-  a.href      = url;
-  a.download  = `studygrid-${todayKey()}.json`;
+  const a = Object.assign(document.createElement('a'), {
+    href: URL.createObjectURL(new Blob([JSON.stringify(studyData,null,2)],{type:'application/json'})),
+    download: `studygrid-${todayKey()}.json`
+  });
   a.click();
-  URL.revokeObjectURL(url);
 });
 
-// Reset current month
 document.getElementById('reset-btn').addEventListener('click', () => {
-  const year  = viewDate.getFullYear();
-  const month = viewDate.getMonth();
-  const label = new Date(year, month, 1).toLocaleString('default', { month: 'long' });
-
-  if (!confirm(`Reset all data for ${label} ${year}? This cannot be undone.`)) return;
-
-  const lastDay = new Date(year, month + 1, 0).getDate();
-  for (let d = 1; d <= lastDay; d++) {
-    delete studyData[toKey(new Date(year, month, d))];
-  }
-  saveData();
-  render();
+  const year=viewDate.getFullYear(), month=viewDate.getMonth();
+  const label=new Date(year,month,1).toLocaleString('default',{month:'long'});
+  if (!confirm(`Reset all data for ${label} ${year}?`)) return;
+  const last=new Date(year,month+1,0).getDate();
+  for (let d=1;d<=last;d++) delete studyData[toKey(new Date(year,month,d))];
+  saveData(); render();
 });
 
-// Keyboard: Escape closes modal
-document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') closeModal();
-});
-
-// ── PWA INSTALL PROMPT ────────────────────────────────────────────────────────
+// ── PWA INSTALL ───────────────────────────────────────────────────────────────
 let deferredInstallPrompt = null;
-
-window.addEventListener('beforeinstallprompt', (e) => {
-  e.preventDefault();
-  deferredInstallPrompt = e;
+window.addEventListener('beforeinstallprompt', e => {
+  e.preventDefault(); deferredInstallPrompt=e;
   document.getElementById('install-banner').classList.remove('hidden');
 });
-
 document.getElementById('install-btn').addEventListener('click', async () => {
   if (!deferredInstallPrompt) return;
-  deferredInstallPrompt.prompt();
-  const { outcome } = await deferredInstallPrompt.userChoice;
-  deferredInstallPrompt = null;
-  document.getElementById('install-banner').classList.add('hidden');
+  deferredInstallPrompt.prompt(); await deferredInstallPrompt.userChoice;
+  deferredInstallPrompt=null; document.getElementById('install-banner').classList.add('hidden');
 });
-
 document.getElementById('dismiss-install').addEventListener('click', () => {
   document.getElementById('install-banner').classList.add('hidden');
 });
 
-// ── SERVICE WORKER REGISTRATION ───────────────────────────────────────────────
+// ── SERVICE WORKER ────────────────────────────────────────────────────────────
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('sw.js')
-    .then(() => console.log('[SW] Registered'))
-    .catch(e => console.warn('[SW] Registration failed:', e));
+  navigator.serviceWorker.register('sw.js').catch(e => console.warn('[SW]',e));
 }
 
-// ── INIT ──────────────────────────────────────────────────────────────────────
 render();
+
