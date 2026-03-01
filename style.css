@@ -223,9 +223,27 @@ main { padding: 16px 16px 0; }
 
 /* ── CONTRIBUTION GRID ── */
 .grid {
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
+  display: flex;
+  flex-direction: column;
   gap: 4px;
+}
+
+/* Each week = one horizontal row with W-label + 7 day cells */
+.week-row-grid {
+  display: grid;
+  grid-template-columns: 28px repeat(7, 1fr);
+  gap: 4px;
+  align-items: center;
+}
+
+/* Week number label on the left */
+.week-num-label {
+  font-size: 0.58rem;
+  color: var(--text-muted);
+  text-align: right;
+  padding-right: 4px;
+  letter-spacing: 0.03em;
+  font-family: 'DM Mono', monospace;
 }
 
 .day-cell {
@@ -322,7 +340,7 @@ main { padding: 16px 16px 0; }
   margin-bottom: 10px;
 }
 
-.week-row {
+.week-summary-row {
   background: var(--bg2);
   border: 1px solid var(--border);
   border-radius: var(--radius);
