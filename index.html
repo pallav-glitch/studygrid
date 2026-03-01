@@ -3,35 +3,25 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="theme-color" content="#0d1117" />
-  <meta name="description" content="Exam Study Tracker – visualize your daily study hours like GitHub contributions." />
+  <meta name="theme-color" content="#0a0a0f" />
+  <meta name="description" content="StudyGrid – track your weekly study hours." />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="StudyGrid" />
-
   <title>StudyGrid</title>
-
-  <!-- PWA Manifest -->
   <link rel="manifest" href="manifest.json" />
-
-  <!-- Google Fonts: DM Mono + Syne -->
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet" />
-
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
 
-  <!-- ── INSTALL BANNER ── -->
+  <!-- INSTALL BANNER -->
   <div id="install-banner" class="hidden">
     <span>📲 Add StudyGrid to your home screen</span>
     <button id="install-btn">Install</button>
     <button id="dismiss-install">✕</button>
   </div>
 
-  <!-- ── APP SHELL ── -->
   <div id="app">
 
     <!-- HEADER -->
@@ -40,16 +30,14 @@
         <div class="logo">STUDY<span>GRID</span></div>
         <div class="header-actions">
           <button class="icon-btn" id="export-btn" title="Export JSON">⬇</button>
-          <button class="icon-btn" id="reset-btn" title="Reset month">↺</button>
+          <button class="icon-btn" id="reset-btn" title="Reset">↺</button>
         </div>
       </div>
 
-      <!-- Quote of the day -->
       <div class="quote-card">
         <span class="quote-text" id="daily-quote"></span>
       </div>
 
-      <!-- Month navigation -->
       <div class="month-nav">
         <button class="nav-btn" id="prev-month">‹</button>
         <div class="month-info">
@@ -59,12 +47,11 @@
         <button class="nav-btn" id="next-month">›</button>
       </div>
 
-      <!-- Streak -->
       <div class="streak-bar">
         <div class="streak-item">
           <span class="streak-icon">🔥</span>
           <span id="streak-count">0</span>
-          <span class="streak-label">day streak</span>
+          <span class="streak-label">week streak</span>
         </div>
         <div class="streak-item">
           <span class="streak-icon">⚡</span>
@@ -74,14 +61,8 @@
       </div>
     </header>
 
-    <!-- GRID SECTION -->
     <main>
-      <!-- Day-of-week labels -->
-      <div class="day-labels">
-        <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
-      </div>
-
-      <!-- Contribution grid – weeks as rows -->
+      <!-- Week blocks grid -->
       <div id="grid" class="grid"></div>
 
       <!-- Legend -->
@@ -95,7 +76,7 @@
         <span class="legend-label">More</span>
       </div>
 
-      <!-- Weekly summaries -->
+      <!-- Weekly summary bars -->
       <section class="weekly-section">
         <h2 class="section-title">Weekly Breakdown</h2>
         <div id="weekly-list"></div>
@@ -104,20 +85,24 @@
 
   </div>
 
-  <!-- ── DAY MODAL ── -->
+  <!-- MODAL -->
   <div id="modal-overlay" class="hidden" role="dialog" aria-modal="true">
     <div id="modal">
       <button id="modal-close">✕</button>
       <div class="modal-date" id="modal-date"></div>
-      <label class="modal-label">Study Hours</label>
-      <div class="hours-picker">
-        <button class="hour-adj" id="hour-dec">−</button>
-        <span id="hour-display">0</span>
-        <button class="hour-adj" id="hour-inc">+</button>
-      </div>
+
+      <label class="modal-label">Total Hours Studied</label>
+      <input
+        type="number"
+        id="hour-input"
+        placeholder="e.g. 20"
+        min="0" max="168"
+      />
+
       <label class="modal-label">Note <span class="optional">(optional)</span></label>
-      <input type="text" id="modal-note" placeholder="e.g. Physics – Electrostatics" maxlength="80" />
-      <button id="modal-save">Save</button>
+      <input type="text" id="modal-note" placeholder="e.g. Physics + Maths revision" maxlength="80" />
+
+      <button id="modal-save">SAVE WEEK</button>
     </div>
   </div>
 
